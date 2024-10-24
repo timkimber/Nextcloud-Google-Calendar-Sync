@@ -21,7 +21,3 @@ Renommez ce fichier en credentials.json et placez-le dans votre répertoire.
 Lors de votre première exécution, il vous sera demandé de vous connecter avec le compte Google que vous souhaitez synchroniser (cela créera ensuite un fichier token qui vous reconnectera automatiquement à chaque lancement du code). Connectez-vous, et votre agenda sera synchronisé dans les deux sens !
 
 (Vous pouvez ensuite le paramétrer comme une tâche cron sur un serveur Linux, mais cela dépasse le cadre de ce tutoriel.)
-
-
-
-
