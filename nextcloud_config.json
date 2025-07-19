@@ -1,0 +1,5 @@
+{
+    "url": "https://YOUR_NEXTCLOUD_URL/remote.php/dav",
+    "username": "USERNAME",
+    "password": "PASSWORD"
+}
