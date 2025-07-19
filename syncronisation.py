@@ -174,7 +174,18 @@ def sync_nextcloud_to_google(service, nextcloud_calendars):
 
         if summary_line and start_line:
             event_summary = summary_line[0].split(":")[1]
-            start = start_line[0].split(":")[1]
+            # Find the first date that doesn't begin with 1970
+            start = None
+            for line in start_line:
+                date_part = line.split(":")[1]
+                if not date_part.startswith('1970'):
+                    start = date_part
+                    break
+
+            # If no valid date found, use the first one as fallback
+            if start is None:
+                start = start_line[0].split(":")[1]
+
             # Si pas de ligne de fin, on prend le début pour événement d'une journée / If there is no end line, the start is taken as the all day event
             end = end_line[0].split(":")[1] if end_line else start
 
@@ -202,6 +213,17 @@ def sync_nextcloud_to_google(service, nextcloud_calendars):
             # Vérifier si l'événement existe déjà sur Google Calendar / Check if the event already exists on Google Calendar
             google_events = get_google_events(service)
             event_exists = any(event_summary in g_event['summary'] for g_event in google_events)
+
+            # For debugging purposes, print the event details
+            # event_exists = False
+            # for g_event in google_events:
+            #     if event_summary in g_event['summary']:
+            #         event_exists = True
+            #         print(f"Matching event found in Google Calendar:")
+            #         print(f"  Summary: {g_event['summary']}")
+            #         print(f"  Start: {g_event['start']}")
+            #         print(f"  End: {g_event['end']}")
+            #         break
 
             if not event_exists:
                 # Ajouter l'événement à Google Calendar / Add the event to Google Calendar
