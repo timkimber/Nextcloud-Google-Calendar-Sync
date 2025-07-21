@@ -63,11 +63,11 @@ def connect_nextcloud_calendars():
 
 # Récupérer les événements de Google Calendar
 def get_google_events(service):
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.UTC)
     end_date = now + datetime.timedelta(days=30)
 
-    time_min = now.isoformat() + 'Z'
-    time_max = end_date.isoformat() + 'Z'
+    time_min = now.isoformat()
+    time_max = end_date.isoformat()
 
     events_result = service.events().list(calendarId='primary',
                                           timeMin=time_min,
@@ -106,7 +106,7 @@ def get_nextcloud_events(calendars):
     # Iterate through all calendars and collect events
     for calendar in calendars:
         try:
-            events = calendar.date_search(start=start, end=end, expand=True)
+            events = calendar.search(start=start, end=end, expand=True)
             all_events.extend(events)
         except Exception as e:
             print(f"Error reading calendar {calendar.name}: {e}")
@@ -165,6 +165,7 @@ END:VCALENDAR"""
 def sync_nextcloud_to_google(service, nextcloud_calendars):
 
     nc_events = get_nextcloud_events(nextcloud_calendars)
+    google_events = get_google_events(service)
 
     for nc_event in nc_events:
         nc_event_data = nc_event.data
@@ -211,7 +212,6 @@ def sync_nextcloud_to_google(service, nextcloud_calendars):
                 end_dt = datetime.datetime.strptime(end, "%Y%m%d") if end else start_dt + datetime.timedelta(days=1)
 
             # Vérifier si l'événement existe déjà sur Google Calendar / Check if the event already exists on Google Calendar
-            google_events = get_google_events(service)
             event_exists = any(event_summary in g_event['summary'] for g_event in google_events)
 
             # For debugging purposes, print the event details
@@ -254,7 +254,8 @@ def sync_nextcloud_to_google(service, nextcloud_calendars):
                         },
                     }
 
-                service.events().insert(calendarId='primary', body=event).execute()
+                # Commented out until I have time to add the UID to the events and handle updates
+                #service.events().insert(calendarId='primary', body=event).execute()
                 print(f"Ajouté à Google: {event_summary}")
 
 def main():
@@ -266,8 +267,7 @@ def main():
 
     # Synchroniser Google vers Nextcloud
     google_events = get_google_events(google_service)
-    # Commented out until I have time to add the UID to the events and handle updates
-    #sync_google_to_nextcloud(google_events, nextcloud_calendars)
+    sync_google_to_nextcloud(google_events, nextcloud_calendars)
 
     # Synchroniser Nextcloud vers Google
     sync_nextcloud_to_google(google_service, nextcloud_calendars)
