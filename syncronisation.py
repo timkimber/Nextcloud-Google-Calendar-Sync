@@ -169,9 +169,27 @@ def sync_nextcloud_to_google(service, nextcloud_calendars):
 
     for nc_event in nc_events:
         nc_event_data = nc_event.data
-        summary_line = [line for line in nc_event_data.split('\n') if line.startswith("SUMMARY:")]
-        start_line = [line for line in nc_event_data.split('\n') if line.startswith("DTSTART")]
-        end_line = [line for line in nc_event_data.split('\n') if line.startswith("DTEND")]
+        print(f"Raw nextcloud event: {nc_event_data}")
+        
+        # Extract only lines between BEGIN:VEVENT and END:VEVENT
+        lines = nc_event_data.split('\n')
+        vevent_lines = []
+        inside_vevent = False
+        
+        for line in lines:
+            if line.startswith("BEGIN:VEVENT"):
+                inside_vevent = True
+                continue
+            elif line.startswith("END:VEVENT"):
+                inside_vevent = False
+                break
+            elif inside_vevent:
+                vevent_lines.append(line)
+        
+        # Process only the VEVENT lines
+        summary_line = [line for line in vevent_lines if line.startswith("SUMMARY:")]
+        start_line = [line for line in vevent_lines if line.startswith("DTSTART")]
+        end_line = [line for line in vevent_lines if line.startswith("DTEND")]
 
         if summary_line and start_line:
             event_summary = summary_line[0].split(":")[1]
