@@ -6,6 +6,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from caldav import DAVClient
 from tzlocal.windows_tz import win_tz
+import pytz
 
 # Scopes pour l'API Google Calendar
 SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -181,6 +182,10 @@ END:VCALENDAR"""
 # Synchroniser les événements Nextcloud vers Google
 def sync_nextcloud_to_google(service, google_events, nextcloud_calendars, nc_events):
 
+    for g_event in google_events:
+        if "Hyrox" == g_event.get('summary', ''):
+            print(g_event)
+
     for nc_event in nc_events:
         nc_event_data = nc_event.data
 #        print(f"Raw nextcloud event: {nc_event_data}")
@@ -206,11 +211,19 @@ def sync_nextcloud_to_google(service, google_events, nextcloud_calendars, nc_eve
         location_line = [line for line in vevent_lines if line.startswith("LOCATION:")]
         start_line = [line for line in vevent_lines if line.startswith("DTSTART")]
         end_line = [line for line in vevent_lines if line.startswith("DTEND")]
+        recurrence_id_line = [line for line in vevent_lines if line.startswith("RECURRENCE-ID")]
+
+        #for g_event in google_events:
+        #    if g_event.get('summary', '') == "Brown Bin":
+        #        print(f"Google event: {g_event}")
 
         if summary_line and start_line:
             event_summary = summary_line[0].split(":", 1)[1]
             event_description = description_line[0].split(":", 1)[1] if description_line else ""
             event_location = location_line[0].split(":", 1)[1] if location_line else ""
+
+            #if event_summary == "Brown Bin":
+            #    print(f"Nextcloud event: {nc_event_data}")
 
             # Extract timezone information from start_line
             start_line_text = start_line[0]
@@ -253,12 +266,41 @@ def sync_nextcloud_to_google(service, google_events, nextcloud_calendars, nc_eve
             existing_event = None
             for g_event in google_events:
                 if event_summary == g_event.get('summary', ''):
-                    existing_event = g_event
-                    break
+                    # If Nextcloud event has RECURRENCE-ID, also compare the date with Google event ID
+                    if recurrence_id_line:
+                        recurrence_id_text = recurrence_id_line[0]
+                        # Extract date from RECURRENCE-ID (format: "RECURRENCE-ID:VALUE=DATE:20250812")
+                        #RECURRENCE-ID;VALUE=DATE:20250812
+                        if ";VALUE=DATE:" in recurrence_id_text:
+                            recurrence_date = recurrence_id_text.split(";VALUE=DATE:")[1]
+                            # Check if Google event ID ends with the same date (format: 'eqahu7o01ftl6r2ps8njjrbu9c_20250812')
+                            if g_event.get('id', '').endswith('_' + recurrence_date):
+                                existing_event = g_event
+                                break
+                        else:
+                            # Fallback for other RECURRENCE-ID formats
+                            existing_event = g_event
+                            break
+                    else:
+                        existing_event = g_event
+                        break
 
             # Prepare the Nextcloud event data for comparison
             if "T" in start:
                 # Format avec heure (événement précis) / Format with time (specific event)
+
+                # Convert start datetime to Europe/London timezone
+                london_tz = pytz.timezone('Europe/London')
+                if start_tz:
+                    # If we have timezone info, localize the datetime and convert to London time
+                    original_tz = pytz.timezone(start_tz)
+                    start_dt_localized = original_tz.localize(start_dt)
+                    start_dt_london = start_dt_localized.astimezone(london_tz)
+                else:
+                    # If no timezone info, assume UTC and convert to London time
+                    start_dt_utc = pytz.utc.localize(start_dt)
+                    start_dt_london = start_dt_utc.astimezone(london_tz)
+
                 nc_event_data = {
                     # 'iCalUID'
                     # 'sequence'
@@ -266,8 +308,8 @@ def sync_nextcloud_to_google(service, google_events, nextcloud_calendars, nc_eve
                     'description': event_description,
                     'location': event_location,
                     'start': {
-                        'dateTime': start_dt.isoformat(),
-                        'timeZone': start_tz if start_tz else 'UTC',
+                        'dateTime': start_dt_london.isoformat(),
+                        'timeZone': start_tz if start_tz else "Europe/London",
                     },
                     'end': {
                         'dateTime': end_dt.isoformat() if end_dt else (start_dt + datetime.timedelta(hours=1)).isoformat() + 'Z',
@@ -291,54 +333,64 @@ def sync_nextcloud_to_google(service, google_events, nextcloud_calendars, nc_eve
             if existing_event:
                 # Compare fields and update if different
                 needs_update = False
+                fields_changed = ""
 
                 # Compare summary
                 if nc_event_data['summary'] != existing_event.get('summary', ''):
                     needs_update = True
+                    fields_changed = fields_changed + "summary "
 
                 # Compare description
                 if nc_event_data['description'] != existing_event.get('description', ''):
                     needs_update = True
+                    fields_changed = fields_changed + f"description from {nc_event_data['description']} to {existing_event.get('description')} "
 
                 # Compare location
                 if nc_event_data['location'] != existing_event.get('location', ''):
                     needs_update = True
+                    fields_changed = fields_changed + f"location from {nc_event_data['location']} to {existing_event.get('location')} "
+
 
                 # Compare start time/date and timezone
                 if 'dateTime' in nc_event_data['start']:
                     if (nc_event_data['start']['dateTime'] != existing_event.get('start', {}).get('dateTime', '') or
                         nc_event_data['start']['timeZone'] != existing_event.get('start', {}).get('timeZone', '')):
                         needs_update = True
+                        fields_changed = fields_changed + "start "
                 else:
                     if nc_event_data['start']['date'] != existing_event.get('start', {}).get('date', ''):
                         needs_update = True
+                        fields_changed = fields_changed + "startdate "
 
                 # Compare end time/date and timezone
                 if 'dateTime' in nc_event_data['end']:
                     if (nc_event_data['end']['dateTime'] != existing_event.get('end', {}).get('dateTime', '') or
                         nc_event_data['end']['timeZone'] != existing_event.get('end', {}).get('timeZone', '')):
                         needs_update = True
+                        fields_changed = fields_changed + "end "
                 else:
                     if nc_event_data['end']['date'] != existing_event.get('end', {}).get('date', ''):
                         needs_update = True
+                        fields_changed = fields_changed + "enddate "
 
                 if needs_update:
                     # Update the existing Google event
-#                   print("Updating Google")
-                    #service.events().update(calendarId='primary', eventId=existing_event['id'], body=nc_event_data).execute()
+                    print(f'Fields changed: {fields_changed}')
                     if 'dateTime' in nc_event_data['start']:
-#                        print(f"old: {existing_event.get('summary')} {existing_event.get('start').get('dateTime')} {existing_event.get('start').get('timeZone')} to {existing_event.get('end').get('dateTime')} {existing_event.get('end').get('timeZone')}")
+                        print(f"old: {existing_event.get('summary')} {existing_event.get('start').get('dateTime')} {existing_event.get('start').get('timeZone')} to {existing_event.get('end').get('dateTime')} {existing_event.get('end').get('timeZone')}")
                         print(f"new: {event_summary} {nc_event_data['start']['dateTime']} {nc_event_data['start']['timeZone']} to {nc_event_data['end']['dateTime']} {nc_event_data['end']['timeZone']}")
                     else:
-#                       print(f"old: {existing_event.get('summary')} {existing_event.get('start').get('date')} to {existing_event.get('end').get('date')}")
+                        print(f"old: {existing_event.get('summary')} {existing_event.get('start').get('date')} to {existing_event.get('end').get('date')}")
                         print(f"new: {event_summary} {nc_event_data['start']['date']} to {nc_event_data['end']['date']}")
+                    print("Updating Google")
+                    service.events().update(calendarId='primary', eventId=existing_event['id'], body=nc_event_data).execute()
             else:
                 # Create new Google event
-                #service.events().insert(calendarId='primary', body=nc_event_data).execute()
                 if 'dateTime' in nc_event_data['start']:
                     print(f"Ajouté à Google: {event_summary} {nc_event_data['start']['dateTime']} {nc_event_data['start']['timeZone']} to {nc_event_data['end']['dateTime']} {nc_event_data['end']['timeZone']}")
                 else:
                     print(f"Ajouté à Google: {event_summary} {nc_event_data['start']['date']} to {nc_event_data['end']['date']}")
+                service.events().insert(calendarId='primary', body=nc_event_data).execute()
 
 def main():
     # Connexion à Google Calendar
@@ -351,9 +403,6 @@ def main():
     google_events = get_google_events(google_service)
     nextcloud_events = get_nextcloud_events(nextcloud_calendars)
 
-    for i in range(min(5, len(google_events))):
-        print(f"Google event {i+1}: {google_events[i]}")
-        print(f"Nextcloud event {i+1}: {nextcloud_events[i].data}")
     # Synchroniser Google vers Nextcloud
     sync_google_to_nextcloud(google_events, nextcloud_calendars, nextcloud_events)
 
