@@ -182,9 +182,9 @@ END:VCALENDAR"""
 # Synchroniser les événements Nextcloud vers Google
 def sync_nextcloud_to_google(service, google_events, nextcloud_calendars, nc_events):
 
-    for g_event in google_events:
-        if "Hyrox" == g_event.get('summary', ''):
-            print(g_event)
+    #for g_event in google_events:
+    #    if "Hyrox" == g_event.get('summary', ''):
+    #        print(g_event)
 
     for nc_event in nc_events:
         nc_event_data = nc_event.data
@@ -301,6 +301,16 @@ def sync_nextcloud_to_google(service, google_events, nextcloud_calendars, nc_eve
                     start_dt_utc = pytz.utc.localize(start_dt)
                     start_dt_london = start_dt_utc.astimezone(london_tz)
 
+                if end_tz:
+                    # If we have timezone info, localize the datetime and convert to London time
+                    original_tz = pytz.timezone(end_tz)
+                    end_dt_localized = original_tz.localize(end_dt)
+                    end_dt_london = end_dt_localized.astimezone(london_tz)
+                else:
+                    # If no timezone info, assume UTC and convert to London time
+                    end_dt_utc = pytz.utc.localize(end_dt)
+                    end_dt_london = end_dt_utc.astimezone(london_tz)
+
                 nc_event_data = {
                     # 'iCalUID'
                     # 'sequence'
@@ -312,8 +322,8 @@ def sync_nextcloud_to_google(service, google_events, nextcloud_calendars, nc_eve
                         'timeZone': start_tz if start_tz else "Europe/London",
                     },
                     'end': {
-                        'dateTime': end_dt.isoformat() if end_dt else (start_dt + datetime.timedelta(hours=1)).isoformat() + 'Z',
-                        'timeZone': end_tz if end_tz else 'UTC',
+                        'dateTime': end_dt_london.isoformat() if end_dt_london else (start_dt + datetime.timedelta(hours=1)).isoformat() + 'Z',
+                        'timeZone': end_tz if end_tz else 'Europe/London',
                     },
                 }
             else:
@@ -404,7 +414,7 @@ def main():
     nextcloud_events = get_nextcloud_events(nextcloud_calendars)
 
     # Synchroniser Google vers Nextcloud
-    sync_google_to_nextcloud(google_events, nextcloud_calendars, nextcloud_events)
+    #sync_google_to_nextcloud(google_events, nextcloud_calendars, nextcloud_events)
 
     # Synchroniser Nextcloud vers Google
     sync_nextcloud_to_google(google_service, google_events, nextcloud_calendars, nextcloud_events)
